@@ -4,16 +4,6 @@ import os
 
 
 @dataclass
-class ModelParams:
-    input_dim = None
-    num_classes = None
-
-    def set(self, input_dim, num_classes):
-        self.input_dim = input_dim
-        self.num_classes = num_classes
-
-
-@dataclass
 class Config:
     version: str
     output_folder: str

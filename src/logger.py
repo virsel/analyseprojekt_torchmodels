@@ -3,11 +3,9 @@ import logging
 from torch import nn
 from pathlib import Path
 from lightning.pytorch.loggers import TensorBoardLogger
-from config import Config
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
-from utils import act_possible
 
 abs_path = Path(os.path.abspath(__file__)).parent
 

@@ -10,137 +10,39 @@ import os
 import torch
 from logger import TensorLogger
 import torch.optim as optim
-from datetime import datetime
 from config import Config
 
 
-class EmbBlock(nn.Module):
-    def __init__(self, 
-                 in_dim=768,
-                 dropout_rate=0.3):
-        super(EmbBlock, self).__init__()
-        
-        # Gradual dimension reduction
-        self.fc1 = nn.Linear(in_dim, 512)
-        # Gradual dimension reduction
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, 128)
-        
-        # Add projection layers for residual connections
-        self.proj2 = nn.Linear(512, 128)
-        
-        self.bn1 = nn.BatchNorm1d(512)
-        self.bn2 = nn.BatchNorm1d(256)
-        self.bn3 = nn.BatchNorm1d(128)
-        
-        self.dropout = nn.Dropout(dropout_rate)
-        
-        self._initialize_weights()
-
-    def _initialize_weights(self):
-        # Kaiming initialization often works better with ReLU
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, X_etc):
-        # Main path
-        x = self.fc1(X_etc)
-        x = self.bn1(x)
-        x = F.relu(x)
-        x1 = self.dropout(x)
-        
-        x = self.fc2(x1)
-        x = self.bn2(x)
-        x = F.relu(x)
-        x2 = self.dropout(x)
-        
-        x = self.fc3(x2)
-        x = self.bn3(x)
-        x = F.relu(x)
-        
-        # Add residual from previous layer
-        x = x + self.proj2(x1)
-        
-        x = self.dropout(x)
-        
-        return x
-
-class EtcBlock(nn.Module):
-    def __init__(self, 
-                 in_dim=768,
-                 dropout_rate=0.3):
-        super(EtcBlock, self).__init__()
-        
-        # Gradual dimension reduction
-        self.fc1 = nn.Linear(in_dim, 512)
-        # Gradual dimension reduction
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, 128)
-        
-        # Add projection layers for residual connections
-        self.proj2 = nn.Linear(512, 128)
-        
-        self.bn1 = nn.BatchNorm1d(512)
-        self.bn2 = nn.BatchNorm1d(256)
-        self.bn3 = nn.BatchNorm1d(128)
-        
-        self.dropout = nn.Dropout(dropout_rate)
-        
-        self._initialize_weights()
-
-    def _initialize_weights(self):
-        # Kaiming initialization often works better with ReLU
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, X_etc):
-        # Main path
-        x = self.fc1(X_etc)
-        x = self.bn1(x)
-        x = F.relu(x)
-        x1 = self.dropout(x)
-        
-        x = self.fc2(x1)
-        x = self.bn2(x)
-        x = F.relu(x)
-        x2 = self.dropout(x)
-        
-        x = self.fc3(x2)
-        x = self.bn3(x)
-        x = F.relu(x)
-        
-        # Add residual from previous layer
-        x = x + self.proj2(x1)
-        
-        x = self.dropout(x)
-        
-        return x
+# Model hyperparameters
+class HyperParams:
+    def __init__(self):
+        self.T=30
+        self.input_dim=1
+        self.hidden_dim=64
+        self.num_layers=2
+        self.output_dim=2
+        self.batch_size = 32
+        self.dropout = 0.1
+        self.lr = 0.001
 
 class SimpleNN(nn.Module):
-    def __init__(self, 
-                 cfg,
-                 etc_dim=900,
-                 embedding_dim=768,
-                 dropout_rate=0.3,
-                 lr = 0.01):
+    def __init__(self, cfg: Config, params: HyperParams):
         super(SimpleNN, self).__init__()
+        self.hyperparams = params
         
-        self.etc_block = EtcBlock(etc_dim)
-        self.emb_block = EtcBlock(embedding_dim)
+        # LSTM layer
+        self.lstm = nn.LSTM(self.hyperparams.input_dim, self.hyperparams.hidden_dim, self.hyperparams.num_layers, batch_first=True)
         
-        self.fc3 = nn.Linear(256, 128)
-        self.fc4 = nn.Linear(128, 4)
+        # Fully connected layer to downscale to output dimension
+        self.fc1 = nn.Linear(self.hyperparams.hidden_dim, 32)
+        self.fc2 = nn.Linear(32, 2)
     
-        self.bn3 = nn.BatchNorm1d(128)
+        self.bn1 = nn.BatchNorm1d(32)
         
-        self.dropout = nn.Dropout(dropout_rate)
+        self.dropout = nn.Dropout(self.hyperparams.dropout)
         
         self._initialize_weights()
-        self._setup_general(cfg.ckpt_path, cfg.log_dir, lr=lr)
+        self._setup_general(cfg.ckpt_path, cfg.log_dir, lr=self.hyperparams.lr)
 
     def _initialize_weights(self):
         # Kaiming initialization often works better with ReLU
@@ -149,20 +51,18 @@ class SimpleNN(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, X_etc, X_emb):
+    def forward(self, X_etc, X_emb=None):
         # Main path
-        x_etc = self.etc_block(X_etc)
-        x_emb = self.emb_block(X_emb)
+        _, (h_n, _) = self.lstm(X_etc)
         
-        x = torch.cat([x_etc, x_emb], dim=1)
+        # x = torch.cat([x_etc, x_emb], dim=1)
         
-        x = self.fc3(x)
-        x = self.bn3(x)
+        x = self.fc1(h_n[-1])
+        x = self.bn1(x)
         x = F.relu(x)
-        
         x = self.dropout(x)
         
-        x = self.fc4(x)
+        x = self.fc2(x)
         
         return x
     
@@ -174,7 +74,7 @@ class SimpleNN(nn.Module):
         self.lr = lr
         self.optimizer = optim.Adam(self.parameters(), lr=lr, weight_decay=0.01)
         
-    def setup_criterion(self, class_weights):
+    def setup_criterion(self, class_weights = None):
         self.criterion = nn.CrossEntropyLoss(weight=class_weights)
     
     def setup4newfit(self):
@@ -196,10 +96,10 @@ class SimpleNN(nn.Module):
         for epoch in range(n_epochs + self.n_trained_epochs)[self.n_trained_epochs:]:
             self.train()
             train_loss = 0.0
-            for X_etc, X_emb, Y in train_loader:
+            for X_etc, Y in train_loader:
                 self.optimizer.zero_grad()
-                outputs = self(X_etc, X_emb)
-                loss = self.criterion(outputs, Y)
+                outputs = self(X_etc)
+                loss = self.criterion(outputs, Y.reshape(-1))
                 loss.backward()
                 self.logger.log_ud(self, self.global_step, self.lr)
                 self.optimizer.step()
@@ -215,13 +115,13 @@ class SimpleNN(nn.Module):
             total = 0
 
             with torch.no_grad():
-                for X_etc, X_emb, Y in val_loader:
-                    outputs = self(X_etc, X_emb)
-                    loss = self.criterion(outputs, Y)
+                for X_etc, Y in val_loader:
+                    outputs = self(X_etc)
+                    loss = self.criterion(outputs, Y.reshape(-1))
                     val_loss += loss.item() * Y.size(0)
                     _, predicted = torch.max(F.softmax(outputs, dim=1), 1)
                     total += Y.size(0)
-                    correct += (predicted == Y).sum().item()
+                    correct += (predicted == Y.reshape(-1)).sum().item()
 
             val_loss = val_loss / len(val_loader.dataset)
             scheduler.step(val_loss)

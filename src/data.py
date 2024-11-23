@@ -17,13 +17,13 @@ import torch
 
 random_state=42
 dir_path = os.path.dirname(os.path.abspath(__file__))
-data_path = os.path.join(dir_path, '../input/data_sampled.csv')
+data_path = os.path.join(dir_path, '../input/AMZN_step2.csv')
 
 
 
 
 def load_data(batch_size=64):
-    df = pd.read_csv('input/AMZN_step2.csv',  usecols=['close'], dtype={'close': 'float32'})
+    df = pd.read_csv(data_path,  usecols=['close'], dtype={'close': 'float32'})
     close_price_reshaped = df.iloc[:, 0].to_numpy().reshape(-1, 1)
     minmax = MinMaxScaler().fit(close_price_reshaped) # Close index
     df_log = minmax.transform(close_price_reshaped) # Close index
@@ -46,33 +46,30 @@ def load_data(batch_size=64):
     
     return train_loader, val_loader
 
-def convert_array_string_numpy(array_str):
-    return np.fromstring(array_str.strip('[]'), sep=' ', dtype=np.float32).tolist()
 
+
+# Transform to list of tuples
+def create_training_data(prices, window_size=30, target_size=1):
+    data = []
+    for i in range(len(prices) - window_size - target_size):
+        x = prices[i:i + window_size]  # 30 days window
+        y = [([1] if prices[i + window_size + j] > prices[i + window_size + j - 1] else [0]) for j in range(target_size)]
+        data.append((np.array(x, dtype=np.float32), np.array(y, dtype=np.int64)))  # Convert booleans to float for compatibility with PyTorch
+    return data
 
 class StockDataset(Dataset):
-    def __init__(self, X_df, Y):
-        self.X_etc = X_df.drop(columns="combined_text").to_numpy(dtype=np.float32)
-        self.X_emb = np.array(X_df.combined_text.to_list(), dtype=np.float32)
-        self.Y = np.argmax(Y, axis=1)
+    def __init__(self, data):
+        self.data = data
 
     def __len__(self):
-        return len(self.Y)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        X_etc = self.X_etc[idx]
-        X_emb = self.X_emb[idx]
+        X = self.data[idx][0]
         # because currently only for each day close price is used -> (30, 1)
-        y = self.Y[idx]
-        return X_etc, X_emb, y
-    
-    # Or more automatically:
-    def get_class_weights(self):
-        counts = np.bincount(self.Y)
-        n_samples = len(self.Y)
-        n_classes = len(counts)
-        weights = n_samples / (n_classes * counts)
-        return torch.tensor(weights, dtype=torch.float32)
+        X = X.reshape(30, 1)
+        y = self.data[idx][1]
+        return X, y
     
     
 if __name__ == '__main__':
