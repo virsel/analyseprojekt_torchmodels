@@ -32,7 +32,7 @@ class SimpleNN(nn.Module):
         self.hyperparams = params
         
         # LSTM layer
-        self.lstm = nn.LSTM(self.hyperparams.input_dim, self.hyperparams.hidden_dim, self.hyperparams.num_layers, batch_first=True)
+        self.lstm = nn.LSTM(self.hyperparams.input_dim, self.hyperparams.hidden_dim, self.hyperparams.num_layers, batch_first=True, device="cpu")
         # self.tweets_block = TweetsBlock()
         
         # Fully connected layer to downscale to output dimension
