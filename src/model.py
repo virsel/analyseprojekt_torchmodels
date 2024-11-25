@@ -11,6 +11,7 @@ import torch
 from logger import TensorLogger
 import torch.optim as optim
 from config import Config
+# from model_token_ids import TweetsBlock
 
 
 # Model hyperparameters
@@ -32,6 +33,7 @@ class SimpleNN(nn.Module):
         
         # LSTM layer
         self.lstm = nn.LSTM(self.hyperparams.input_dim, self.hyperparams.hidden_dim, self.hyperparams.num_layers, batch_first=True)
+        # self.tweets_block = TweetsBlock()
         
         # Fully connected layer to downscale to output dimension
         self.fc1 = nn.Linear(self.hyperparams.hidden_dim, 32)
@@ -51,13 +53,18 @@ class SimpleNN(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, X_etc, X_emb=None):
+    def forward(self, X_complex):
+        X_etc = X_complex[0]
+        X_etc = X_etc.to('cpu')
+        X_tweet_tkids = X_complex[1]
+        
         # Main path
-        _, (h_n, _) = self.lstm(X_etc)
+        out, (h_n, _) = self.lstm(X_etc)
+        # X_cnn_out = self.tweets_block(X_tweet_tkids) 
         
         # x = torch.cat([x_etc, x_emb], dim=1)
         
-        x = self.fc1(h_n[-1])
+        x = self.fc1(out)
         x = self.bn1(x)
         x = F.relu(x)
         x = self.dropout(x)
@@ -96,9 +103,10 @@ class SimpleNN(nn.Module):
         for epoch in range(n_epochs + self.n_trained_epochs)[self.n_trained_epochs:]:
             self.train()
             train_loss = 0.0
-            for X_etc, Y in train_loader:
+            for X_complex, Y in train_loader:
                 self.optimizer.zero_grad()
-                outputs = self(X_etc)
+                outputs = self(X_complex)
+                Y = Y.to("cpu")
                 loss = self.criterion(outputs, Y.reshape(-1))
                 loss.backward()
                 self.logger.log_ud(self, self.global_step, self.lr)
@@ -115,8 +123,8 @@ class SimpleNN(nn.Module):
             total = 0
 
             with torch.no_grad():
-                for X_etc, Y in val_loader:
-                    outputs = self(X_etc)
+                for X_complex, Y in val_loader:
+                    outputs = self(X_complex)
                     loss = self.criterion(outputs, Y.reshape(-1))
                     val_loss += loss.item() * Y.size(0)
                     _, predicted = torch.max(F.softmax(outputs, dim=1), 1)
