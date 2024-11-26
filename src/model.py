@@ -23,8 +23,9 @@ class HyperParams:
         self.num_layers=2
         self.output_dim=2
         self.batch_size = 32
-        self.dropout = 0.1
-        self.lr = 0.001
+        self.T = 30
+        self.dropout = 0.3
+        self.lr = 0.01
 
 class SimpleNN(nn.Module):
     def __init__(self, cfg: Config, params: HyperParams):
@@ -55,16 +56,16 @@ class SimpleNN(nn.Module):
 
     def forward(self, X_complex):
         X_etc = X_complex[0]
-        X_etc = X_etc.to('cpu')
+        X_etc = X_etc.reshape(X_etc.shape[0], self.hyperparams.T, 1)
         X_tweet_tkids = X_complex[1]
         
         # Main path
-        out, (h_n, _) = self.lstm(X_etc)
+        _, (h_n, _) = self.lstm(X_etc)
         # X_cnn_out = self.tweets_block(X_tweet_tkids) 
         
         # x = torch.cat([x_etc, x_emb], dim=1)
         
-        x = self.fc1(out)
+        x = self.fc1(h_n[-1])
         x = self.bn1(x)
         x = F.relu(x)
         x = self.dropout(x)

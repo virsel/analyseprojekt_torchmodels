@@ -11,7 +11,7 @@ class Config:
     ckpt_path: str
 
 
-def get_default_config(root="./", version="v2_cnn") -> Config:
+def get_default_config(root="./", version="v2_lstm_fullparams") -> Config:
     output_folder = Path(f"{root}../output")
 
     cfg = Config(
